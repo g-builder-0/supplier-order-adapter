@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>supplier-order-adapter — demo</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.3rem; }
+  h2 { font-size: 1.05rem; margin-top: 2rem; }
+  table { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
+  th, td { text-align: left; border-bottom: 1px solid #ddd; padding: 0.4rem 0.6rem; font-size: 0.9rem; }
+  form { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin-bottom: 1rem; }
+  label { display: flex; flex-direction: column; font-size: 0.8rem; color: #444; gap: 0.25rem; }
+  select, input, button { font-size: 0.95rem; padding: 0.35rem; }
+  button { cursor: pointer; }
+  #result, #log { font-family: ui-monospace, monospace; font-size: 0.82rem; background: #f6f6f6; border: 1px solid #ddd; border-radius: 4px; padding: 0.75rem; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+  .valid { color: #1a7a1a; }
+  .invalid { color: #b00; }
+  .status-pending { color: #888; }
+  .status-partial { color: #a66a00; }
+  .status-received { color: #1a7a1a; }
+  .status-flagged { color: #b00; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h1>supplier-order-adapter — Phase 6 demo</h1>
+<p>Submit a receiving event against an order line, then watch its status update and the webhook delivery appear in the log below.</p>
+
+<h2>Order lines</h2>
+<table id="order-lines">
+  <thead>
+    <tr><th>Purchase order</th><th>Part</th><th>Ordered</th><th>Received</th><th>Status</th></tr>
+  </thead>
+  <tbody>
+    {% for line in order_lines %}
+    <tr data-order-line-id="{{ line.id }}">
+      <td>{{ line.purchase_order.po_number }}</td>
+      <td>{{ line.supplier_part.part.sku }} — {{ line.supplier_part.part.name }} ({{ line.supplier_part.supplier.name }})</td>
+      <td>{{ line.quantity_ordered }}</td>
+      <td class="qty-received">{{ line.quantity_received }}</td>
+      <td class="line-status status-{{ line.status }}">{{ line.get_status_display }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>Submit a receiving event</h2>
+<form id="receive-form">
+  <label>
+    Order line
+    <select name="order_line" id="order-line-select" required>
+      {% for line in order_lines %}
+      <option value="{{ line.id }}">
+        {{ line.purchase_order.po_number }} / {{ line.supplier_part.part.sku }} ({{ line.quantity_received }}/{{ line.quantity_ordered }})
+      </option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>
+    Quantity
+    <input type="number" name="quantity" min="1" value="1" required>
+  </label>
+  <label>
+    Condition
+    <select name="condition">
+      <option value="good">Good</option>
+      <option value="damaged">Damaged</option>
+      <option value="mismatched">Mismatched / wrong item</option>
+    </select>
+  </label>
+  <label>
+    Note
+    <input type="text" name="note" placeholder="(optional)">
+  </label>
+  <button type="submit">Submit receiving event</button>
+</form>
+
+<div id="result">(no submission yet)</div>
+
+<h2>Webhook log <small style="font-weight: normal; color: #888;">(polls every 2s)</small></h2>
+<div id="log">(waiting for deliveries…)</div>
+
+<script>
+const form = document.getElementById("receive-form");
+const resultEl = document.getElementById("result");
+const logEl = document.getElementById("log");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const body = {
+    order_line: Number(form.order_line.value),
+    quantity: Number(form.quantity.value),
+    condition: form.condition.value,
+    note: form.note.value,
+  };
+
+  resultEl.textContent = "submitting…";
+
+  try {
+    const res = await fetch("/api/receiving-events/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    resultEl.textContent = res.status + "\n" + JSON.stringify(data, null, 2);
+
+    if (res.ok) {
+      const row = document.querySelector(`tr[data-order-line-id="${body.order_line}"]`);
+      if (row) {
+        const line = data.order_line;
+        row.querySelector(".qty-received").textContent = line.quantity_received;
+        const statusCell = row.querySelector(".line-status");
+        statusCell.textContent = line.status;
+        statusCell.className = "line-status status-" + line.status;
+      }
+    }
+  } catch (err) {
+    resultEl.textContent = "request failed: " + err;
+  }
+
+  refreshLog();
+});
+
+async function refreshLog() {
+  try {
+    const res = await fetch("/api/demo/webhook-log/");
+    const deliveries = await res.json();
+    if (deliveries.length === 0) {
+      logEl.textContent = "(no deliveries yet — set WEBHOOK_SUBSCRIBER_URL in .env to this server's own /api/demo/webhook-receiver/ endpoint)";
+      return;
+    }
+    logEl.innerHTML = deliveries.map(d => {
+      const cls = d.signature_valid ? "valid" : "invalid";
+      const verdict = d.signature_valid ? "signature OK" : "SIGNATURE INVALID";
+      return `[${d.received_at}] <span class="${cls}">${d.event_type} — ${verdict}</span>\n${JSON.stringify(d.payload)}`;
+    }).join("\n\n");
+  } catch (err) {
+    logEl.textContent = "log fetch failed: " + err;
+  }
+}
+
+refreshLog();
+setInterval(refreshLog, 2000);
+</script>
+
+</body>
+</html>

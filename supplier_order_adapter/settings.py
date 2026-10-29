@@ -36,6 +36,13 @@ DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = [h for h in os.environ.get('DJANGO_ALLOWED_HOSTS', '').split(',') if h]
 
 
+# Phase 3 — webhook dispatcher (supplier_graph.webhooks). A single
+# hardcoded subscriber URL for now; subscriber registration is deferred.
+# Loaded from .env (gitignored) via python-dotenv; see .env.example.
+WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET', 'dev-webhook-secret-change-me')
+WEBHOOK_SUBSCRIBER_URL = os.environ.get('WEBHOOK_SUBSCRIBER_URL', '')
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -46,6 +53,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'supplier_graph.apps.SupplierGraphConfig',
+    'rest_framework',
 ]
 
 MIDDLEWARE = [

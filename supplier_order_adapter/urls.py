@@ -15,8 +15,14 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
+
+from supplier_graph.demo_views import DemoPageView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/', include('supplier_graph.urls')),
+    # Phase 6: the demo page itself lives outside /api/ -- it's an HTML
+    # page a person views in a browser, not a JSON endpoint.
+    path('demo/', DemoPageView.as_view(), name='demo-page'),
 ]
